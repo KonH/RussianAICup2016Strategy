@@ -9,7 +9,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		Bottom
 	}
 
-	public struct Vector2 {
+	public class Vector2 {
 		public double X;
 		public double Y;
 
@@ -19,7 +19,9 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		}
 
 		public double GetDistanceTo(double x, double y) {
-			return Math.Sqrt(x * x + y * y);
+			var cx = X - x;
+			var cy = Y - y;
+			return Math.Sqrt(cx * cx + cy * cy);
 		}
 
 		public double GetDistanceTo(Vector2 point) {
