@@ -3,12 +3,6 @@ using System.Collections.Generic;
 using Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk.Model;
 
 namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
-	public enum LineType {
-		Middle,
-		Top,
-		Bottom
-	}
-
 	public class Vector2 {
 		public double X;
 		public double Y;
@@ -44,8 +38,8 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		Move move;
 
 		Random random;
-		Dictionary<LineType, Vector2[]> waypointsByLine;
-		LineType curLine;
+		Dictionary<LaneType, Vector2[]> waypointsByLane;
+		LaneType curLane;
 		Vector2[] curWaypoints;
 
 		public void Move(Wizard self, World world, Game game, Move move) {
@@ -179,9 +173,9 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 				random = new Random(GetRandomSeed());
 				double mapSize = game.MapSize;
 
-				waypointsByLine = new Dictionary<LineType, Vector2[]>();
+				waypointsByLane = new Dictionary<LaneType, Vector2[]>();
 
-				waypointsByLine.Add(LineType.Middle, new Vector2[]{
+				waypointsByLane.Add(LaneType.Middle, new Vector2[]{
 					new Vector2(100.0D, mapSize - 100.0D),
 					GetRandomBool()
 							? new Vector2(600.0D, mapSize - 200.0D)
@@ -190,7 +184,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 					new Vector2(mapSize - 600.0D, 600.0D)
 				});
 
-				waypointsByLine.Add(LineType.Top, new Vector2[]{
+				waypointsByLane.Add(LaneType.Top, new Vector2[]{
 					new Vector2(100.0D, mapSize - 100.0D),
 					new Vector2(100.0D, mapSize - 400.0D),
 					new Vector2(200.0D, mapSize - 800.0D),
@@ -204,7 +198,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 					new Vector2(mapSize - 200.0D, 200.0D)
 				});
 
-				waypointsByLine.Add(LineType.Bottom, new Vector2[]{
+				waypointsByLane.Add(LaneType.Bottom, new Vector2[]{
 					new Vector2(100.0D, mapSize - 100.0D),
 					new Vector2(400.0D, mapSize - 100.0D),
 					new Vector2(800.0D, mapSize - 200.0D),
@@ -223,21 +217,21 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 					case 2:
 					case 6:
 					case 7:
-						curLine = LineType.Top;
+						curLane = LaneType.Top;
 						break;
 					case 3:
 					case 8:
-						curLine = LineType.Middle;
+						curLane = LaneType.Middle;
 						break;
 					case 4:
 					case 5:
 					case 9:
 					case 10:
-						curLine = LineType.Bottom;
+						curLane = LaneType.Bottom;
 						break;
 				}
 
-				curWaypoints = waypointsByLine[curLine];
+				curWaypoints = waypointsByLane[curLane];
 
 			}
 		}
