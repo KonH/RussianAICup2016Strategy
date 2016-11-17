@@ -31,20 +31,22 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 
 		const double SpawnDistance         = 1000D;
 		const double MinMoveDistance       = 2.25D;
-		const double LowHPFactor           = 0.50D;
-		const double SafeHPFactor          = 0.85D;
+		const double LowHPFactor           = 0.60D;
+		const double SafeHPFactor          = 0.75D;
 		const double MeleeDistance         = 175D;
-		const double WaypointRadius        = 100D;
-		const double StrafeCoeff           = 4D;
-		const double EnemyDetectCoeff      = 2.5D;
-		const double FriendDetectCoeff     = 0.5D;
-		const double NeutralDetectCoeff    = 0.75D;
+		const double WaypointRadius        = 150D;
+		const double StrafeCoeff           = 5D;
+		const double EnemyDetectCoeff      = 3.00D;
+		const double FriendDetectCoeff     = 0.25D;
+		const double NeutralDetectCoeff    = 1.00D;
+		const double BonusDetectCoeff      = 3.00D;
 		const double SafeZoneBaseDistance  = 1000D;
 		const double SafeZoneTowerDistance = 50D;
-		const double GrindZoneDistance     = 500D;
-		const double BehindDistance        = 150D;
+		const double GrindZoneDistance     = 800D;
+		const double BehindDistance        = 250D;
 		const double BaseDangerCoeff       = 0.75D;
-		const double BaseDistance          = 500D;
+		const double BaseDistance          = 600D;
+		const int    StopGrindTime         = 5000;
 
 		Wizard self;
 		World world;
@@ -70,18 +72,21 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		bool onGrindZone       = false;
 		bool baseDanger        = false;
 		bool onBase            = false;
+		bool canGrind          = false;
 
-		List<Minion> nearMinions           = new List<Minion>();
-		List<Wizard> nearWizards           = new List<Wizard>();
+		List<Minion>   nearMinions         = new List<Minion>();
+		List<Wizard>   nearWizards         = new List<Wizard>();
 		List<Building> nearBuildings       = new List<Building>();
-		List<Wizard> nearFriendWizards     = new List<Wizard>();
-		List<Minion> nearFriendMinions     = new List<Minion>();
+		List<Wizard>   nearFriendWizards   = new List<Wizard>();
+		List<Minion>   nearFriendMinions   = new List<Minion>();
 		List<Building> nearFriendBuildings = new List<Building>();
-		List<Minion> nearNeutrals          = new List<Minion>();
-		List<Tree> nearTrees               = new List<Tree>();
+		List<Minion>   nearNeutrals        = new List<Minion>();
+		List<Bonus>    nearBonuses         = new List<Bonus>();
+		List<Tree>     nearTrees           = new List<Tree>();
 
 		string prevAction = "";
 		string curAction  = "";
+		bool   strafed    = false;
 
 		public void Move(Wizard self, World world, Game game, Move move) {
 			SetupTick(self, world, game, move);
@@ -132,6 +137,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		}
 
 		void SetStrafe() {
+			strafed = true;
 			var strafe = game.WizardStrafeSpeed;
 			strafeValue += strafe;
 			if( NeedChangeStrafeDir() ) {
@@ -143,14 +149,8 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 
 		void MoveTo(Vector2 point) {
 			double angle = self.GetAngleTo(point.X, point.Y);
-
 			move.Turn = angle;
-
-			if ( Math.Abs(angle) < game.StaffSector / 4.0D ) {
-				move.Speed = game.WizardForwardSpeed;
-			} else {
-				move.Speed = game.WizardBackwardSpeed;
-			}
+			move.Speed = game.WizardForwardSpeed;
 		}
 
 		Vector2 GetNextWaypoint() {
@@ -192,9 +192,10 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 
 		// Conditions
 		void UpdateUnits() {
-			var enemyDistance  = self.VisionRange * EnemyDetectCoeff;
-			var friendDistance = self.VisionRange * FriendDetectCoeff;
+			var enemyDistance   = self.VisionRange * EnemyDetectCoeff;
+			var friendDistance  = self.VisionRange * FriendDetectCoeff;
 			var neutralDistance = self.VisionRange * NeutralDetectCoeff;
+			var bonusDistance   = self.VisionRange * BonusDetectCoeff;
 			SelectNearUnits(enemyDistance,   world.Buildings, EnemyFaction,   nearBuildings);
 			SelectNearUnits(enemyDistance,   world.Minions,   EnemyFaction,   nearMinions);
 			SelectNearUnits(enemyDistance,   world.Wizards,   EnemyFaction,   nearWizards);
@@ -203,18 +204,34 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			SelectNearUnits(friendDistance,  world.Buildings, FriendFaction,  nearFriendBuildings);
 			SelectNearUnits(neutralDistance, world.Minions,   NeutralFaction, nearNeutrals);
 			SelectNearUnits(enemyDistance,   world.Trees,     OtherFaction,   nearTrees);
+			SelectNearUnits(bonusDistance,   world.Bonuses,                   nearBonuses);
 		}
 
 		void UpdateConditions() {
 			lowHp = self.Life < self.MaxLife * LowHPFactor;
 			safeHp = self.Life > self.MaxLife * SafeHPFactor;
 			meleeDanger = IsMeleeDanger();
-			enemyOverwaight = nearWizards.Count > nearFriendWizards.Count;
+			enemyOverwaight = IsEnemyOverwaight();
 			hasFriendsForward = IsFriendsForward();
 			onSafeZone = IsSafeZone();
 			onGrindZone = IsGrindZone();
 			baseDanger = IsBaseDanger();
 			onBase = IsOnBase();
+			canGrind = world.TickCount < StopGrindTime;
+		}
+
+		bool IsEnemyOverwaight() {
+			var friendLife = GetUnitLifes(nearFriendWizards);
+			var enemyLife = GetUnitLifes(nearWizards);
+			return enemyLife > friendLife;
+		}
+
+		double GetUnitLifes<T>(List<T> units) where T:LivingUnit {
+			var life = 0.0D;
+			foreach ( var unit in units ) {
+				life += (double)unit.Life / unit.MaxLife;
+			}
+			return life;
 		}
 
 		bool IsMeleeDanger() {			
@@ -317,6 +334,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		}
 
 		void MakeAction() {
+			strafed = false;
 			prevAction = curAction;
 			curAction = "";
 			if( baseDanger ) {
@@ -354,11 +372,13 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 							AttackWizard();
 						}
 					} else {
-						if ( nearBuildings.Count > 0 ) {
-							AttackBuilding();
+						if( nearBonuses.Count > 0 ) {
+							MoveToBonus();
 						} else if ( nearMinions.Count > 0 ) {
 							AttackMinion(false);
-						} else if ( (nearNeutrals.Count > 0) && onGrindZone ) {
+						} else if ( nearBuildings.Count > 0 ) {
+							AttackBuilding();
+						} else if ( (nearNeutrals.Count > 0) && onGrindZone && canGrind ) {
 							AttackNeutral();
 						} else {
 							if ( hasFriendsForward || onSafeZone ) {
@@ -372,6 +392,9 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			}
 			if( curAction == "" ) {
 				SetAction("None");
+			}
+			if( !strafed ) {
+				strafeValue = 0;
 			}
 		}
 
@@ -391,11 +414,18 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 
 		void Retreat(string param) {
 			MoveTo(GetPreviousWaypoint());
+			SetStrafe();
 			if ( lastDistance < MinMoveDistance ) {
-				SetStrafe();
 				TryAttackTree();
+				move.Speed = -game.WizardBackwardSpeed;
 			}
 			SetAction("Retreat by " + param);
+		}
+
+		void MoveToBonus() {
+			var bonus = GetNearestUnit(nearBonuses);
+			MoveTo(new Vector2(bonus.X, bonus.Y));
+			SetAction("Move to bonus");
 		}
 
 		void AttackWizard() {
@@ -427,8 +457,10 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		void TryAttackTree() {
 			var tree = GetNearestUnit(nearTrees);
 			if ( tree != null ) {
-				if ( self.GetDistanceTo(tree) < (self.Radius + tree.Radius) * 1.25D ) {
-					AttackNearestUnit(nearTrees, "Tree", false);
+				if ( Math.Abs(self.GetAngleTo(tree)) < game.StaffSector / 2.0D ) {
+					if ( self.GetDistanceTo(tree) < (self.Radius + tree.Radius) * 1.25D ) {
+						AttackNearestUnit(nearTrees, "Tree", false);
+					}
 				}
 			}
 		}
@@ -539,7 +571,15 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			}
 		}
 
-		T GetNearestUnit<T>(List<T> units) where T:LivingUnit {
+		void SelectNearUnits(double distance, Bonus[] from, List<Bonus> to) {
+			to.Clear();
+			foreach ( var unit in from ) {
+				if ( self.GetDistanceTo(unit) <= distance ) {
+					to.Add(unit);
+				}
+			}
+		}
+		T GetNearestUnit<T>(List<T> units) where T:CircularUnit {
 			T nearestTarget = null;
 			double nearestTargetDistance = double.MaxValue;
 
