@@ -218,6 +218,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			baseDanger = IsBaseDanger();
 			onBase = IsOnBase();
 			canGrind = world.TickCount < StopGrindTime;
+			canGrind = world.TickIndex < StopGrindTime;
 		}
 
 		bool IsEnemyOverwaight() {
