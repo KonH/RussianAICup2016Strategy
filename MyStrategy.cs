@@ -39,7 +39,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		const double EnemyDetectCoeff      = 3.00D;
 		const double FriendDetectCoeff     = 0.25D;
 		const double NeutralDetectCoeff    = 1.00D;
-		const double BonusDetectCoeff      = 3.00D;
+		const double BonusDetectCoeff      = 10.00D;
 		const double SafeZoneBaseDistance  = 1000D;
 		const double SafeZoneTowerDistance = 50D;
 		const double GrindZoneDistance     = 800D;
@@ -47,6 +47,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		const double BaseDangerCoeff       = 0.75D;
 		const double BaseDistance          = 600D;
 		const int    StopGrindTime         = 5000;
+		const double BonusTimeFactor       = 0.125D;
 
 		Wizard self;
 		World world;
@@ -57,6 +58,9 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		Dictionary<LaneType, Vector2[]> waypointsByLane;
 		LaneType curLane;
 		Vector2[] curWaypoints;
+		List<Vector2> bonusPoints;
+		List<Vector2> bonusWaypoints;
+		bool selectedBonus;
 		bool strafeDir;
 		double strafeValue;
 
@@ -73,6 +77,8 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		bool baseDanger        = false;
 		bool onBase            = false;
 		bool canGrind          = false;
+		bool hasBonus          = false;
+		bool bonusTime         = false;
 
 		List<Minion>   nearMinions         = new List<Minion>();
 		List<Wizard>   nearWizards         = new List<Wizard>();
@@ -153,6 +159,25 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			move.Speed = game.WizardForwardSpeed;
 		}
 
+		Vector2 GetNextWaypoint(List<Vector2> waypoints) {
+			int lastWaypointIndex = waypoints.Count - 1;
+			Vector2 lastWaypoint = waypoints[lastWaypointIndex];
+
+			for ( int waypointIndex = 0; waypointIndex < lastWaypointIndex; waypointIndex++ ) {
+				Vector2 waypoint = waypoints[waypointIndex];
+
+				if ( waypoint.GetDistanceTo(self) <= WaypointRadius ) {
+					return waypoints[waypointIndex + 1];
+				}
+
+				if ( lastWaypoint.GetDistanceTo(waypoint) < lastWaypoint.GetDistanceTo(self) ) {
+					return waypoint;
+				}
+			}
+
+			return lastWaypoint;
+		}
+
 		Vector2 GetNextWaypoint() {
 			int lastWaypointIndex = curWaypoints.Length - 1;
 			Vector2 lastWaypoint = curWaypoints[lastWaypointIndex];
@@ -190,6 +215,20 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			return firstWaypoint;
 		}
 
+		Vector2 GetNearestVector(List<Vector2> vectors) {
+			var distance = int.MaxValue;
+			Vector2 vector = null;
+			for ( int i = 0; i < vectors.Count; i++ ) {
+				var curVector = vectors[i];
+				var curDistance = self.GetDistanceTo(curVector.X, curVector.Y);
+				if( curDistance < distance ) {
+					vector = curVector;
+				}
+
+			}
+			return vector;
+		}
+
 		// Conditions
 		void UpdateUnits() {
 			var enemyDistance   = self.VisionRange * EnemyDetectCoeff;
@@ -211,17 +250,21 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			lowHp = self.Life < self.MaxLife * LowHPFactor;
 			safeHp = self.Life > self.MaxLife * SafeHPFactor;
 			meleeDanger = IsMeleeDanger();
-			enemyOverwaight = IsEnemyOverwaight();
 			hasFriendsForward = IsFriendsForward();
 			onSafeZone = IsSafeZone();
 			onGrindZone = IsGrindZone();
 			baseDanger = IsBaseDanger();
 			onBase = IsOnBase();
-			canGrind = world.TickCount < StopGrindTime;
 			canGrind = world.TickIndex < StopGrindTime;
+			hasBonus = HasBonus();
+			bonusTime = IsBonusTime();
+			enemyOverwaight = IsEnemyOverwaight();
 		}
 
 		bool IsEnemyOverwaight() {
+			if( hasBonus ) {
+				return false;
+			}
 			var friendLife = GetUnitLifes(nearFriendWizards);
 			var enemyLife = GetUnitLifes(nearWizards);
 			return enemyLife > friendLife;
@@ -326,6 +369,35 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			return false;
 		}
 
+		bool HasBonus() {
+			for( int i = 0; i < self.Statuses.Length; i++ ) {
+				var status = self.Statuses[i];
+				switch( status.Type ) {
+					case StatusType.Empowered:
+					case StatusType.Hastened:
+					case StatusType.Shielded:
+						return true;
+				}
+			}
+			return false;
+		}
+
+		bool IsBonusTime() {
+			return false;
+
+			if( !this.bonusTime ) {
+				selectedBonus = GetRandomBool();
+			}
+			if( hasBonus  ) {
+				return false;
+			}
+			var bonusTime = game.BonusAppearanceIntervalTicks;
+			var tickBase = world.TickIndex % bonusTime;
+			return 
+				((world.TickIndex > bonusTime) && (tickBase < bonusTime * BonusTimeFactor)) || 
+				(tickBase > bonusTime * (1 - BonusTimeFactor));
+		}
+
 		// Actions
 		void SetAction(string action) {
 			curAction = action;
@@ -362,7 +434,11 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 					}
 				}
 				if ( curAction == "" ) {
-					if ( nearWizards.Count > 0 ) {
+					if ( nearBonuses.Count > 0 ) {
+						MoveToBonus();
+					} else if ( bonusTime ) {
+						GoToBonus();
+					} else if ( nearWizards.Count > 0 ) {
 						if ( enemyOverwaight ) {
 							if ( safeHp ) {
 								AttackWizard();
@@ -373,9 +449,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 							AttackWizard();
 						}
 					} else {
-						if( nearBonuses.Count > 0 ) {
-							MoveToBonus();
-						} else if ( nearMinions.Count > 0 ) {
+						if ( nearMinions.Count > 0 ) {
 							AttackMinion(false);
 						} else if ( nearBuildings.Count > 0 ) {
 							AttackBuilding();
@@ -423,6 +497,34 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			SetAction("Retreat by " + param);
 		}
 
+		void SetupBonusWaypoints(Vector2 point) {
+			if( bonusWaypoints == null ) {
+				bonusWaypoints = new List<Vector2>();
+			} else {
+				bonusWaypoints.Clear();
+			}
+			for(int i = 0; i < curWaypoints.Length/2 + 1; i++ ) {
+				bonusWaypoints.Add(curWaypoints[i]);
+			}
+			bonusWaypoints.Add(point);
+		}
+
+		Vector2 GetNextBonusWaypoints() {
+			return GetNextWaypoint(bonusWaypoints);
+		}
+
+		void GoToBonus() {
+			var point = selectedBonus ? bonusPoints[0] : bonusPoints[1];
+			SetupBonusWaypoints(point);
+			MoveTo(GetNextBonusWaypoints());
+			if ( lastDistance < MinMoveDistance ) {
+				SetStrafe();
+				TryAttackTree();
+				move.Speed = -game.WizardBackwardSpeed;
+			}
+			SetAction("Go to bonus");
+		}
+
 		void MoveToBonus() {
 			var bonus = GetNearestUnit(nearBonuses);
 			MoveTo(new Vector2(bonus.X, bonus.Y));
@@ -458,10 +560,8 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		void TryAttackTree() {
 			var tree = GetNearestUnit(nearTrees);
 			if ( tree != null ) {
-				if ( Math.Abs(self.GetAngleTo(tree)) < game.StaffSector / 2.0D ) {
-					if ( self.GetDistanceTo(tree) < (self.Radius + tree.Radius) * 1.25D ) {
-						AttackNearestUnit(nearTrees, "Tree", false);
-					}
+				if ( self.GetDistanceTo(tree) < (self.Radius + tree.Radius) * 1.25D ) {
+					AttackNearestUnit(nearTrees, "Tree", false);
 				}
 			}
 		}
@@ -660,6 +760,11 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 					new Vector2(mapSize - 200.0D, mapSize * 0.25D),
 					new Vector2(mapSize - 200.0D, 200.0D)
 				});
+
+				bonusPoints = new List<Vector2>();
+				var offset = self.Radius * 1.5D;
+				bonusPoints.Add(new Vector2(1200 - offset, 1200 - offset));
+				bonusPoints.Add(new Vector2(2800 - offset, 2800 - offset));
 			}
 		}
 
