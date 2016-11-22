@@ -31,23 +31,25 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 
 		const double SpawnDistance         = 1000D;
 		const double MinMoveDistance       = 2.25D;
-		const double LowHPFactor           = 0.60D;
+		const double LowHPFactor           = 0.50D;
 		const double SafeHPFactor          = 0.75D;
-		const double MeleeDistance         = 175D;
-		const double WaypointRadius        = 150D;
-		const double StrafeCoeff           = 5D;
-		const double EnemyDetectCoeff      = 3.00D;
-		const double FriendDetectCoeff     = 0.25D;
-		const double NeutralDetectCoeff    = 1.00D;
-		const double BonusDetectCoeff      = 10.00D;
-		const double SafeZoneBaseDistance  = 1000D;
+		const double MeleeDistance         = 150D;
+		const double WaypointRadius        = 175D;
+		const double StrafeCoeff           = 4D;
+		const double EnemyDetectCoeff      = 1.50D;
+		const double FriendDetectCoeff     = 0.5D;
+		const double NeutralDetectCoeff    = 0.25D;
+		const double BonusDetectCoeff      = 1.00D;
+		const double SafeZoneBaseDistance  = 1250D;
 		const double SafeZoneTowerDistance = 50D;
 		const double GrindZoneDistance     = 800D;
-		const double BehindDistance        = 250D;
-		const double BaseDangerCoeff       = 0.75D;
-		const double BaseDistance          = 600D;
+		const double BehindDistance        = 150D;
+		const double BaseDangerCoeff       = 0.25D;
+		const double BaseDistance          = 750D;
 		const int    StopGrindTime         = 5000;
 		const double BonusTimeFactor       = 0.125D;
+		const double StartTime             = 1000;
+		const double EnemyBaseDistance     = 850; 
 
 		Wizard self;
 		World world;
@@ -79,6 +81,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		bool canGrind          = false;
 		bool hasBonus          = false;
 		bool bonusTime         = false;
+		bool enemyBaseDanger   = false;
 
 		List<Minion>   nearMinions         = new List<Minion>();
 		List<Wizard>   nearWizards         = new List<Wizard>();
@@ -121,7 +124,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		}
 
 		void SelectLane() {
-			switch ( random.Next(4) ) {
+			switch ( random.Next(3) ) {
 				case 0:
 					curLane = LaneType.Top;
 					break;
@@ -129,7 +132,6 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 					curLane = LaneType.Bottom;
 					break;
 				case 2:
-				case 3:
 					curLane = LaneType.Middle;
 					break;
 			}
@@ -259,6 +261,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			hasBonus = HasBonus();
 			bonusTime = IsBonusTime();
 			enemyOverwaight = IsEnemyOverwaight();
+			enemyBaseDanger = IsEnemyBaseDanger();
 		}
 
 		bool IsEnemyOverwaight() {
@@ -295,6 +298,9 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 		}
 
 		bool IsFriendsForward() {
+			if ( world.TickIndex > StartTime ) {
+				return true;
+			}
 			var ownBase = GetBase(); 
 			if( ownBase == null ) {
 				return false;
@@ -398,6 +404,18 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 				(tickBase > bonusTime * (1 - BonusTimeFactor));
 		}
 
+		bool IsEnemyBaseDanger() {
+			for( int i = 0; i < world.Buildings.Length; i++ ) {
+				var building = world.Buildings[i];
+				if( (building.Type == BuildingType.FactionBase) && (building.Faction == EnemyFaction) ) {
+					if( self.GetDistanceTo(building) < EnemyBaseDistance ) {
+						return true;
+					}
+				}
+			}
+			return false;
+		}
+
 		// Actions
 		void SetAction(string action) {
 			curAction = action;
@@ -411,12 +429,13 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 			prevAction = curAction;
 			curAction = "";
 			if( baseDanger ) {
-				if( nearWizards.Count > 0 ) {
+				if ( nearWizards.Count > 0 ) {
 					AttackWizard();
-				} else if( nearMinions.Count > 0 ) {
+				} else if ( nearMinions.Count > 0 ) {
 					AttackMinion(true);
+				} else {
+					Wait();
 				}
-				Wait();
 			} else if( lowHp && !onBase ) {
 				Retreat("low HP");
 			} else {
@@ -451,12 +470,14 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 					} else {
 						if ( nearMinions.Count > 0 ) {
 							AttackMinion(false);
-						} else if ( nearBuildings.Count > 0 ) {
+						} else if ( (nearBuildings.Count > 0) && !enemyBaseDanger ) {
 							AttackBuilding();
 						} else if ( (nearNeutrals.Count > 0) && onGrindZone && canGrind ) {
 							AttackNeutral();
 						} else {
-							if ( hasFriendsForward || onSafeZone ) {
+							if( enemyBaseDanger ) {
+								Retreat("Enemy Base");
+							} else if ( (hasFriendsForward || onSafeZone) ) {
 								Move();
 							} else {
 								Wait();
@@ -716,7 +737,7 @@ namespace Com.CodeGame.CodeWizards2016.DevKit.CSharpCgdk {
 
 		void TryInit(Wizard self, Game game) {
 			if ( random == null ) {
-				random = new Random(GetRandomSeed());
+				random = new Random(DateTime.Now.Millisecond);
 				double mapSize = game.MapSize;
 
 				waypointsByLane = new Dictionary<LaneType, Vector2[]>();
